@@ -72,7 +72,12 @@ def cluster_faces(imgs: Dict[str, torch.Tensor], K: int) -> List[List[str]]:
     cluster_results: List[List[str]] = [[] for _ in range(K)] # Please make sure your output follows this data format.
         
     ##### YOUR IMPLEMENTATION STARTS HERE #####
-    
+    for img_name in list(imgs):
+        img = imgs[img_name]
+        img_np = img.permute(1, 2, 0).numpy()
+        detection_results = detect_faces(img)
+        face_locations = [(int(box[1]), int(box[0] + box[2]), int(box[1] + box[3]), int(box[0])) for box in detection_results]
+        face_encodings = face_recognition.face_encodings(img_np, face_locations)
     return cluster_results
 
 
