@@ -40,7 +40,7 @@ def detect_faces(img: torch.Tensor) -> List[List[float]]:
     ##### YOUR IMPLEMENTATION STARTS HERE #####
     # img: 3 x H x W
     img_np = img.permute(1, 2, 0).numpy()
-    detection_list = face_recognition.face_locations(img_np)
+    detection_list = face_recognition.face_locations(img_np, number_of_times_to_upsample=2)
     for i in range (len(detection_list)):
         (top, right, bottom, left) = detection_list[i]
         detection_results.append([float(left), float(top), float(right-left), float(bottom-top)])
@@ -72,18 +72,20 @@ def cluster_faces(imgs: Dict[str, torch.Tensor], K: int) -> List[List[str]]:
     cluster_results: List[List[str]] = [[] for _ in range(K)] # Please make sure your output follows this data format.
         
     ##### YOUR IMPLEMENTATION STARTS HERE #####
+    names_list = list(imgs.keys())
+
     encoding_list = []
-    for img_name in list(imgs):
-        img = imgs[img_name]
+    for i in range(len(names_list)):
+        img = imgs[names_list[i]]
         img_np = img.permute(1, 2, 0).numpy()
         detection_results = detect_faces(img)
         face_locations = [(int(box[1]), int(box[0] + box[2]), int(box[1] + box[3]), int(box[0])) for box in detection_results]
         face_encodings = face_recognition.face_encodings(img_np, face_locations)
-        encoding_list.append(face_encodings)
-    encoding_torch = torch.tensor(encoding_list)
-    kmeans_results = kmeans(encoding_torch, K)
+        encoding = [float(x) for x in face_encodings[0]]
+        encoding_list.append(encoding)
+    encoding_tensor = torch.tensor(encoding_list)
+    kmeans_results = kmeans(encoding_tensor, K)
 
-    names_list = list(imgs.keys())
     for i in range(len(names_list)):
         name = names_list[i]
         label = kmeans_results[i]
@@ -102,29 +104,37 @@ def kmeans(points: torch.Tensor, K: int):
     random_i = torch.randint(0, len(points), (K,))
     centers = points[random_i]
     
-    e = 0
-    while e < 100:
-        distances = []
-        # assign each point to nearest center
-        for point in points:
-            dis = []
-            for i in range(K):
-                dis.append(torch.norm(point - centers[i]))
-            distances.append(dis)
-        labels = torch.argmin(torch.tensor(distances), dim=1)
+    best_labels = None
+    best_score = float('inf')
+    for attempt in range(10):
+        e = 0
+        while e < 1000:
+            distances = []
+            # assign each point to nearest center
+            for point in points:
+                dis = []
+                for i in range(K):
+                    dis.append(torch.norm(point - centers[i]))
+                distances.append(dis)
+            labels = torch.argmin(torch.tensor(distances), dim=1)
 
-        # compute new center
-        new_centers = []
-        for k in range(K):
-            cluster_k_points = points[labels == k]
-            new_center = torch.mean(cluster_k_points, dim=0) if len(cluster_k_points) > 0 else centers[k]
-            new_centers.append(new_center)
-        new_centers = torch.stack(new_centers)
+            # compute new center
+            new_centers = []
+            for k in range(K):
+                cluster_k_points = points[labels == k]
+                new_center = torch.mean(cluster_k_points, dim=0) if len(cluster_k_points) > 0 else centers[k]
+                new_centers.append(new_center)
+            new_centers = torch.stack(new_centers)
 
-        if torch.equal(centers, new_centers):
-            break
+            if torch.equal(centers, new_centers):
+                min_distances, current_labels = torch.min(torch.tensor(distances), dim=1)
+                current_score = torch.sum(min_distances).item()
+                if current_score < best_score:
+                    best_score = current_score
+                    best_labels = current_labels
+                break
 
-        centers = new_centers
-        e += 1
+            centers = new_centers
+            e += 1
 
-    return labels
+    return best_labels
