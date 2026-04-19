@@ -72,12 +72,23 @@ def cluster_faces(imgs: Dict[str, torch.Tensor], K: int) -> List[List[str]]:
     cluster_results: List[List[str]] = [[] for _ in range(K)] # Please make sure your output follows this data format.
         
     ##### YOUR IMPLEMENTATION STARTS HERE #####
+    encoding_list = []
     for img_name in list(imgs):
         img = imgs[img_name]
         img_np = img.permute(1, 2, 0).numpy()
         detection_results = detect_faces(img)
         face_locations = [(int(box[1]), int(box[0] + box[2]), int(box[1] + box[3]), int(box[0])) for box in detection_results]
         face_encodings = face_recognition.face_encodings(img_np, face_locations)
+        encoding_list.append(face_encodings)
+    encoding_torch = torch.tensor(encoding_list)
+    kmeans_results = kmeans(encoding_torch, K)
+
+    names_list = list(imgs.keys())
+    for i in range(len(names_list)):
+        name = names_list[i]
+        label = kmeans_results[i]
+        cluster_results[label].append(name)
+
     return cluster_results
 
 
@@ -87,3 +98,33 @@ But remember the above 2 functions are the only functions that will be called by
 '''
 
 # TODO: Your functions. (if needed)
+def kmeans(points: torch.Tensor, K: int):
+    random_i = torch.randint(0, len(points), (K,))
+    centers = points[random_i]
+    
+    e = 0
+    while e < 100:
+        distances = []
+        # assign each point to nearest center
+        for point in points:
+            dis = []
+            for i in range(K):
+                dis.append(torch.norm(point - centers[i]))
+            distances.append(dis)
+        labels = torch.argmin(torch.tensor(distances), dim=1)
+
+        # compute new center
+        new_centers = []
+        for k in range(K):
+            cluster_k_points = points[labels == k]
+            new_center = torch.mean(cluster_k_points, dim=0) if len(cluster_k_points) > 0 else centers[k]
+            new_centers.append(new_center)
+        new_centers = torch.stack(new_centers)
+
+        if torch.equal(centers, new_centers):
+            break
+
+        centers = new_centers
+        e += 1
+
+    return labels
