@@ -101,16 +101,25 @@ But remember the above 2 functions are the only functions that will be called by
 
 # TODO: Your functions. (if needed)
 def kmeans(points: torch.Tensor, K: int):
-    random_i = torch.randint(0, len(points), (K,))
-    centers = points[random_i]
+    # set furthest data as the initial center
+    first_idx = torch.randint(0, len(points), (1,)).item()
+    centers_list = [points[first_idx]]
+    for _ in range(1, K):
+        current_centers = torch.stack(centers_list)
+        distances = torch.norm(points.unsqueeze(1) - current_centers.unsqueeze(0), dim=2)
+        min_distances, _ = torch.min(distances, dim=1)
+        next_center_idx = torch.argmax(min_distances).item()
+        centers_list.append(points[next_center_idx])
+    centers = torch.stack(centers_list)
     
     best_labels = None
     best_score = float('inf')
-    for attempt in range(10):
+    # try multiple times
+    for _ in range(5):
         e = 0
-        while e < 1000:
+        while e < 300:
             distances = []
-            # assign each point to nearest center
+            # assign each point to nearest cluster
             for point in points:
                 dis = []
                 for i in range(K):
@@ -125,7 +134,8 @@ def kmeans(points: torch.Tensor, K: int):
                 new_center = torch.mean(cluster_k_points, dim=0) if len(cluster_k_points) > 0 else centers[k]
                 new_centers.append(new_center)
             new_centers = torch.stack(new_centers)
-
+            
+            # break when there is no longer change in centers
             if torch.equal(centers, new_centers):
                 min_distances, current_labels = torch.min(torch.tensor(distances), dim=1)
                 current_score = torch.sum(min_distances).item()
